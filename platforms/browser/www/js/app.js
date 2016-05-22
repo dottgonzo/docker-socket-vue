@@ -3,14 +3,17 @@
 var hostNodes = [];
 
 
+
 function dockerInspects(data, label) {
     _.map(hostNodes, function (hostnode) {
         if (hostnode.label == label) {
             hostnode.inspect = data;
+            checkstack()
         }
 
     })
-    console.log(label, data);
+
+    
 
 }
 
@@ -41,7 +44,7 @@ function Socket(token, connection, label) {
     socket.on("error", function (error) {
         if (error.type == "UnauthorizedError" || error.code == "invalid_token") {
             // redirect user to login page perhaps?
-            console.log("User's token has expired",error);
+            console.log("User's token has expired", error);
         }
     });
 }
@@ -52,7 +55,7 @@ function login() {
     console.log("login")
     return new Promise(function (resolve, reject) {
 
-        hostNodes.push({ label: "zero", token: false, io_url: 'http://studio.caruso.online:6767', online: false })
+        hostNodes.push({ stacks: [], label: "zero", token: false, io_url: 'http://studio.caruso.online:6767', online: false })
 
         localStorage.setItem("nodes", JSON.stringify(hostNodes))
         resolve(true)
@@ -62,6 +65,7 @@ function login() {
 }
 
 function startApp() {
+
     console.log("start app now")
     _.map(hostNodes, function (hostnode) {
         console.log(hostnode.token, hostnode.io_url, hostnode.label);
@@ -111,7 +115,7 @@ function getData(nodeswithtoken) {
                 dataType: 'json',
                 success: function (data) {
 
-                    iterator.inspect = data;
+                    iterator.containers = data;
 
 
 
@@ -188,6 +192,7 @@ function getTokens(nodes) {
 
 function checkbefore() {
     console.log("start")
+
     if (localStorage.getItem("nodes")) {
         console.log(localStorage.getItem("nodes"))
         console.log("try to authorize")
@@ -195,6 +200,7 @@ function checkbefore() {
             console.log("try to get data")
             getData(nodeswithtoken).then(function (nodeinspecteds) {
                 hostNodes = nodeinspecteds;
+                checkstack();
                 console.log("try to start app")
                 startApp()
             }).catch(function (err) {
@@ -216,3 +222,45 @@ function checkbefore() {
     }
 }
 checkbefore();
+
+function checkstack() {
+
+
+    _.map(hostNodes, function (node) {
+        node.stacks=[];
+        _.map(node.containers, function (container) {
+
+            
+            var compose_label = container.Config.Labels["com.docker.compose.project"];
+
+            
+            var exists = false;
+            _.map(node.stacks, function (stack) {
+                if (compose_label == stack.label) {
+                    exists = true;
+                    stack.containers.push(container)
+                }
+
+
+
+            })
+
+            if (!exists) {
+                node.stacks.push({ label: compose_label, containers: [container] })
+
+
+            }
+
+
+
+
+        })
+
+
+
+
+
+
+
+    })
+}
