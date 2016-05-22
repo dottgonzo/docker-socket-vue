@@ -1,11 +1,5 @@
 
 
-var localhost = {
-
-}
-
-localStorage.setItem("nodes", JSON.stringify(localhost))
-
 var hostNodes = [];
 
 
@@ -26,14 +20,15 @@ function dockerInspects(data, label) {
 
 
 
-function Socket(jwt, connection, label) {
+function Socket(token, connection, label) {
+    console.log(token)
     var socket;
     socket = io.connect(connection, {
-        'query': 'token=' + jwt
+        'query': 'token=' + token
     });
 
     socket.on('connect', function () {
-
+        console.log("subscribed")
         socket.emit('subscribe', "inspects");
 
     });
@@ -43,25 +38,34 @@ function Socket(jwt, connection, label) {
         dockerInspects(data, label)
 
     });
-
+    socket.on("error", function (error) {
+        if (error.type == "UnauthorizedError" || error.code == "invalid_token") {
+            // redirect user to login page perhaps?
+            console.log("User's token has expired",error);
+        }
+    });
 }
 
 
 
 function login() {
+    console.log("login")
     return new Promise(function (resolve, reject) {
 
-        hostNodes.push({ label: "zero", token: false, io_url: 'https://studio.caruso.online:6767', online: false })
+        hostNodes.push({ label: "zero", token: false, io_url: 'http://studio.caruso.online:6767', online: false })
 
+        localStorage.setItem("nodes", JSON.stringify(hostNodes))
+        resolve(true)
     })
 
 
 }
 
 function startApp() {
+    console.log("start app now")
     _.map(hostNodes, function (hostnode) {
-
-        Socket(hostnode.io_url, hostnode.label)
+        console.log(hostnode.token, hostnode.io_url, hostnode.label);
+        Socket(hostnode.token, hostnode.io_url, hostnode.label)
 
     });
 
@@ -75,10 +79,11 @@ function startApp() {
     })
 
 
-    Page_Home();
+    Page_Dashboard();
 
 
     var App = Vue.extend({})
+    router = new VueRouter()
 
 
 
@@ -86,9 +91,12 @@ function startApp() {
     router.map({
 
         '/': {
-            component: Home
+            component: Component_Dashboard
         }
     })
+
+    router.start(App, '#app');
+
 
 }
 function getData(nodeswithtoken) {
@@ -104,7 +112,8 @@ function getData(nodeswithtoken) {
                 success: function (data) {
 
                     iterator.inspect = data;
-                    if (iterator.token) delete iterator.token;
+
+
 
                     nodesinspects.push(iterator)
 
@@ -135,7 +144,7 @@ function getTokens(nodes) {
     var nodeswithtoken = [];
     return new Promise(function (resolve, reject) {
 
-        async.each(nodes, function (iterator) {
+        async.each(nodes, function (iterator, cb) {
             $.ajax({
                 'type': 'POST',
                 'url': iterator.io_url + "/login",
@@ -143,7 +152,7 @@ function getTokens(nodes) {
                 'data': JSON.stringify({}),
                 'dataType': 'json',
                 'success': function (a) {
-                    iterator.token = "XXXX";
+                    iterator.token = a.token;
                     iterator.online = true;
                     nodeswithtoken.push(iterator)
 
@@ -178,10 +187,15 @@ function getTokens(nodes) {
 }
 
 function checkbefore() {
+    console.log("start")
     if (localStorage.getItem("nodes")) {
+        console.log(localStorage.getItem("nodes"))
+        console.log("try to authorize")
         getTokens(JSON.parse(localStorage.getItem("nodes"))).then(function (nodeswithtoken) {
+            console.log("try to get data")
             getData(nodeswithtoken).then(function (nodeinspecteds) {
                 hostNodes = nodeinspecteds;
+                console.log("try to start app")
                 startApp()
             }).catch(function (err) {
                 console.log(err)
@@ -193,6 +207,7 @@ function checkbefore() {
 
 
     } else {
+        console.log("try to login")
         login().then(function () {
             checkbefore()
         }).catch(function (err) {
